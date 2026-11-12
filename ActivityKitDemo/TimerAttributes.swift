@@ -17,6 +17,12 @@ nonisolated struct TimerAttributes: ActivityAttributes {
 
         var isPaused: Bool { pausedAt != nil }
 
+        var pausedRemainingText: String? {
+            guard let pausedAt else { return nil }
+            let remaining = max(0, endDate.timeIntervalSince(pausedAt))
+            return Duration.seconds(remaining.rounded()).formatted(.time(pattern: .minuteSecond))
+        }
+
         func isFinished(at now: Date = .now) -> Bool {
             !isPaused && endDate <= now
         }

@@ -108,8 +108,10 @@ private struct CountdownText: View {
     var body: some View {
         if isStale {
             Text("Fertig!")
+        } else if let pausedText = state.pausedRemainingText {
+            Text(pausedText)
         } else {
-            Text(timerInterval: state.startDate...state.endDate, pauseTime: state.pausedAt, countsDown: true)
+            Text(timerInterval: state.startDate...state.endDate, countsDown: true)
         }
     }
 }

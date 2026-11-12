@@ -77,6 +77,7 @@ private struct PresetGrid: View {
                     .buttonStyle(.plain)
                 }
             }
+
         }
     }
 }
@@ -96,9 +97,15 @@ private struct RunningTimerView: View {
                     .font(.title2.bold())
             }
 
-            Text(timerInterval: state.startDate...state.endDate, pauseTime: state.pausedAt, countsDown: true)
-                .font(.system(size: 64, weight: .bold, design: .rounded).monospacedDigit())
-                .multilineTextAlignment(.center)
+            Group {
+                if let pausedText = state.pausedRemainingText {
+                    Text(pausedText)
+                } else {
+                    Text(timerInterval: state.startDate...state.endDate, countsDown: true)
+                }
+            }
+            .font(.system(size: 64, weight: .bold, design: .rounded).monospacedDigit())
+            .multilineTextAlignment(.center)
 
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 StatusLabel(state: state, now: context.date)
@@ -140,6 +147,7 @@ private struct RunningTimerView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
+
         }
     }
 }
