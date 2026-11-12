@@ -78,6 +78,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				TimerAttributes.swift,
+				TimerIntents.swift,
 			);
 			target = 1F1AD39A30A4F90F006B1288 /* ActivityKitDemoWidgetExtension */;
 		};

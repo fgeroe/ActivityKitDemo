@@ -5,73 +5,175 @@
 //  Created by Fabian Gerö on 11.11.26.
 //
 
-import ActivityKit
 import SwiftUI
+import ActivityKit
 
 struct ContentView: View {
-    @State private var activity: Activity<TimerAttributes>?
+    @State private var manager = TimerManager()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "timer")
-                .font(.system(size: 72))
-                .foregroundStyle(.orange)
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    if !manager.areActivitiesEnabled {
+                        DisabledBanner()
+                    }
 
-            Text(activity == nil ? "Kein Timer aktiv" : "Timer läuft")
+                    if let activity = manager.activity, let state = manager.state {
+                        RunningTimerView(attributes: activity.attributes, state: state, manager: manager)
+                    } else {
+                        PresetGrid { preset in
+                            manager.start(preset)
+                        }
+                    }
+
+                    if let errorMessage = manager.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Live Activity Demo")
+        }
+        .tint(.orange)
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                manager.refresh()
+            }
+        }
+    }
+}
+
+private struct PresetGrid: View {
+    let onSelect: (TimerPreset) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Timer wählen")
                 .font(.headline)
 
-            VStack(spacing: 12) {
-                Button("Starten (3 Min)", action: startTimer)
-                    .disabled(activity != nil)
-
-                Button("+1 Minute") {
-                    Task { await addMinute() }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                ForEach(TimerPreset.all) { preset in
+                    Button {
+                        onSelect(preset)
+                    } label: {
+                        VStack(spacing: 8) {
+                            Image(systemName: preset.symbolName)
+                                .font(.title)
+                                .foregroundStyle(.orange)
+                            Text(preset.title)
+                                .font(.headline)
+                            Text(preset.durationText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .disabled(activity == nil)
-
-                Button("Beenden", role: .destructive) {
-                    Task { await endTimer() }
-                }
-                .disabled(activity == nil)
             }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding()
-        .task {
-            activity = Activity<TimerAttributes>.activities.first
         }
     }
+}
 
-    // MARK: - ActivityKit
+private struct RunningTimerView: View {
+    let attributes: TimerAttributes
+    let state: TimerAttributes.ContentState
+    let manager: TimerManager
 
-    private func startTimer() {
-        let state = TimerAttributes.ContentState(
-            startDate: .now,
-            endDate: .now.addingTimeInterval(3 * 60)
+    var body: some View {
+        VStack(spacing: 20) {
+            VStack(spacing: 8) {
+                Image(systemName: attributes.symbolName)
+                    .font(.system(size: 48))
+                    .foregroundStyle(.orange)
+                Text(attributes.title)
+                    .font(.title2.bold())
+            }
+
+            Text(timerInterval: state.startDate...state.endDate, pauseTime: state.pausedAt, countsDown: true)
+                .font(.system(size: 64, weight: .bold, design: .rounded).monospacedDigit())
+                .multilineTextAlignment(.center)
+
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                StatusLabel(state: state, now: context.date)
+            }
+
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Button {
+                        Task { await manager.togglePause() }
+                    } label: {
+                        Label(
+                            state.isPaused ? "Weiter" : "Pause",
+                            systemImage: state.isPaused ? "play.fill" : "pause.fill"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    Button {
+                        Task { await manager.addMinute() }
+                    } label: {
+                        Label("+1 Min", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+
+                Button {
+                    manager.sendAlert(after: 5)
+                } label: {
+                    Label("Alert in 5 Sek.", systemImage: "bell.badge")
+                        .frame(maxWidth: .infinity)
+                }
+
+                Button(role: .destructive) {
+                    Task { await manager.stop() }
+                } label: {
+                    Label("Beenden", systemImage: "stop.fill")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
+    }
+}
+
+private struct StatusLabel: View {
+    let state: TimerAttributes.ContentState
+    let now: Date
+
+    var body: some View {
+        Group {
+            if state.isPaused {
+                Label("Pausiert", systemImage: "pause.circle.fill")
+            } else if state.isFinished(at: now) {
+                Label("Fertig!", systemImage: "checkmark.circle.fill")
+            } else {
+                Label("Läuft", systemImage: "play.circle.fill")
+            }
+        }
+        .font(.headline)
+        .foregroundStyle(.secondary)
+    }
+}
+
+private struct DisabledBanner: View {
+    var body: some View {
+        Label(
+            "Live Activities sind für diese App in den Einstellungen deaktiviert.",
+            systemImage: "exclamationmark.triangle.fill"
         )
-
-        do {
-            activity = try Activity.request(
-                attributes: TimerAttributes(title: "Demo-Timer"),
-                content: .init(state: state, staleDate: nil)
-            )
-        } catch {
-            print("Live Activity konnte nicht gestartet werden: \(error)")
-        }
-    }
-
-    private func addMinute() async {
-        guard let activity else { return }
-
-        var state = activity.content.state
-        state.endDate.addTimeInterval(60)
-
-        await activity.update(.init(state: state, staleDate: nil))
-    }
-
-    private func endTimer() async {
-        await activity?.end(nil, dismissalPolicy: .immediate)
-        activity = nil
+        .font(.callout)
+        .foregroundStyle(.red)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
